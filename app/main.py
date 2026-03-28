@@ -14,7 +14,7 @@ from app.mq import( mq,
     MQ_QUEUE_REACTIONS_PERSISTED,
     MQ_ROUTING_KEY_CREATED,
     MQ_ROUTING_KEY_REACTION_CREATED,)
-from app.ws import manager
+from app.ws import manager, signal_manager
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -150,6 +150,18 @@ async def ws_room(ws: WebSocket, room_id: str):
     except Exception:
         manager.disconnect(room_id, ws)
 
+@app.websocket("/ws/signal/{room_id}")
+async def ws_signal(ws: WebSocket, room_id: str):
+    """Только relay JSON между пирами в комнате; тело не парсится."""
+    await signal_manager.connect(room_id, ws)
+    try:
+        while True:
+            raw = await ws.receive_text()
+            await signal_manager.relay(room_id, ws, raw)
+    except WebSocketDisconnect:
+        signal_manager.disconnect(room_id, ws)
+    except Exception:
+        signal_manager.disconnect(room_id, ws)
 
 @app.get("/health")
 async def health():
